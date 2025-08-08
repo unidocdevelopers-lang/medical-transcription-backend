@@ -59,11 +59,15 @@ def process_medical_text():
         if not text or not consult_id or not patient_name:
             return jsonify({"error": "Missing required fields: medical_text, consult_id, patient_name"}), 400
 
-        # Enhanced extraction using the prompt-based approach
-        extracted_data = extract_medical_data_advanced(text)
+        print(f"🩺 Processing medical text: {text[:100]}...")
+        
+        # Enhanced extraction using smart text analysis
+        extracted_data = extract_medical_data_smart(text)
         extracted_data['patient_name'] = patient_name
         extracted_data['patient_age'] = patient_age
         extracted_data['consult_id'] = consult_id
+
+        print(f"✅ Extraction completed: {json.dumps(extracted_data, indent=2)}")
 
         return jsonify({
             "status": "success",
@@ -71,609 +75,416 @@ def process_medical_text():
             "data": extracted_data
         }), 200
     except Exception as e:
+        print(f"❌ Processing error: {str(e)}")
         return jsonify({"error": f"Processing error: {str(e)}"}), 500
 
-def extract_medical_data_advanced(text):
+def extract_medical_data_smart(text):
     """
-    Advanced medical data extraction based on the provided prompt logic
-    This mimics the sophisticated AI processing from your web application
+    Smart medical data extraction that only extracts what's actually present in the text
     """
+    print("🔍 Starting smart medical data extraction...")
     
-    # Clean and prepare text
-    text = clean_medical_text(text)
+    # Clean text first
+    text = clean_and_normalize_text(text)
+    print(f"📝 Cleaned text: {text}")
     
-    # Extract vitals FIRST (highest priority as per prompt)
-    vitals = extract_vitals_advanced(text)
-    
-    # Remove vitals from text for consult_summary processing
-    text_without_vitals = remove_vitals_from_text(text, vitals)
-    
-    return {
-        "chief_complaint": extract_chief_complaint_advanced(text),
-        "consult_summary": extract_consult_summary_advanced(text_without_vitals, vitals),
-        "vitals_examination": vitals,
-        "medication_data": extract_medications_advanced(text),
-        "investigations": extract_investigations_advanced(text),
-        "medicine_templates": extract_medicine_templates_advanced(text),
-        "super_templates": extract_super_templates_advanced(text),
-        "advice": extract_advice_advanced(text),
-        "follow_up_day": extract_follow_up_advanced(text),
-        "follow_up_mode": extract_follow_up_mode_advanced(text),
-        "visit_type": extract_visit_type_advanced(text)
+    # Extract each component only if present
+    result = {
+        "chief_complaint": extract_chief_complaint_smart(text),
+        "consult_summary": extract_consultation_summary_smart(text),
+        "vitals_examination": extract_vitals_smart(text),
+        "medication_data": extract_medications_smart(text),
+        "investigations": extract_investigations_smart(text),
+        "medicine_templates": extract_templates_smart(text, "medicine"),
+        "super_templates": extract_templates_smart(text, "super"),
+        "advice": extract_advice_smart(text),
+        "follow_up_day": extract_follow_up_day_smart(text),
+        "follow_up_mode": extract_follow_up_mode_smart(text),
+        "visit_type": extract_visit_type_smart(text)
     }
-
-def clean_medical_text(text):
-    """Clean and normalize the medical text"""
-    # Remove extra whitespace and normalize
-    text = re.sub(r'\s+', ' ', text)
-    text = text.strip()
     
-    # Fix common medical abbreviations
-    text = re.sub(r'\bBP\b(?!\s*:)', 'BP:', text, flags=re.IGNORECASE)
-    text = re.sub(r'\bPR\b(?!\s*:)', 'PR:', text, flags=re.IGNORECASE)
-    text = re.sub(r'\bRBS\b(?!\s*:)', 'RBS:', text, flags=re.IGNORECASE)
+    print(f"🎯 Final extraction result: {json.dumps(result, indent=2)}")
+    return result
+
+def clean_and_normalize_text(text):
+    """Clean and normalize medical text"""
+    # Remove extra whitespace
+    text = re.sub(r'\s+', ' ', text.strip())
+    
+    # Normalize common medical abbreviations
+    text = re.sub(r'\bBP\s*[:=]\s*', 'blood pressure is ', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bPR\s*[:=]\s*', 'pulse rate is ', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bHR\s*[:=]\s*', 'heart rate is ', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bRBS\s*[:=]\s*', 'random blood sugar is ', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bTemp\s*[:=]\s*', 'temperature is ', text, flags=re.IGNORECASE)
     
     return text
 
-def extract_vitals_advanced(text):
-    """Enhanced vitals extraction with comprehensive pattern matching"""
-    vitals = {"bp": "", "pr": "", "rbs": ""}
-    
-    # Enhanced BP patterns - Extract numerical values only
-    bp_patterns = [
-        r'BP[:\s]*([0-9]{2,3}/[0-9]{2,3})',
-        r'Blood Pressure[:\s]*([0-9]{2,3}/[0-9]{2,3})',
-        r'([0-9]{2,3}/[0-9]{2,3})\s*mmHg',
-        r'([0-9]{2,3}/[0-9]{2,3})\s*mm\s*Hg',
-        r'His BP is ([0-9]{2,3}/[0-9]{2,3})',
-        r'Her BP is ([0-9]{2,3}/[0-9]{2,3})',
-        r'BP was ([0-9]{2,3}/[0-9]{2,3})',
-        r'Blood pressure is ([0-9]{2,3}/[0-9]{2,3})',
-        r'systolic[^0-9]*([0-9]{2,3})[^0-9]*diastolic[^0-9]*([0-9]{2,3})',
-        r'([0-9]{2,3})\s*/\s*([0-9]{2,3})'
-    ]
-    
-    for pattern in bp_patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            if len(match.groups()) == 1:
-                vitals['bp'] = match.group(1)
-            elif len(match.groups()) == 2:
-                vitals['bp'] = f"{match.group(1)}/{match.group(2)}"
-            break
-
-    # Enhanced PR patterns - Extract numerical values only
-    pr_patterns = [
-        r'PR[:\s]*([0-9]{2,3})',
-        r'Pulse Rate[:\s]*([0-9]{2,3})',
-        r'Pulse[:\s]*([0-9]{2,3})',
-        r'Heart Rate[:\s]*([0-9]{2,3})',
-        r'HR[:\s]*([0-9]{2,3})',
-        r'([0-9]{2,3})\s*bpm',
-        r'Pulse Rate is ([0-9]{2,3})',
-        r'His PR is ([0-9]{2,3})',
-        r'Her PR is ([0-9]{2,3})',
-        r'PR was ([0-9]{2,3})',
-        r'pulse.*?([0-9]{2,3})'
-    ]
-    
-    for pattern in pr_patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            vitals['pr'] = match.group(1)
-            break
-
-    # Enhanced RBS patterns - Extract numerical values only
-    rbs_patterns = [
-        r'RBS[:\s]*([0-9]{2,3})',
-        r'Random Blood Sugar[:\s]*([0-9]{2,3})',
-        r'Blood Sugar[:\s]*([0-9]{2,3})',
-        r'([0-9]{2,3})\s*mg/dL',
-        r'([0-9]{2,3})\s*mg\s*/\s*dL',
-        r'RBS is ([0-9]{2,3})',
-        r'Random Blood Sugar is ([0-9]{2,3})',
-        r'Blood glucose[:\s]*([0-9]{2,3})',
-        r'glucose level[:\s]*([0-9]{2,3})',
-        r'sugar.*?([0-9]{2,3})'
-    ]
-    
-    for pattern in rbs_patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            vitals['rbs'] = match.group(1)
-            break
-
-    return vitals
-
-def remove_vitals_from_text(text, vitals):
-    """Remove vital signs from text to prevent duplication in consult_summary"""
-    text_clean = text
-    
-    if vitals['bp']:
-        # Remove BP mentions
-        text_clean = re.sub(rf"BP[:\s]*{re.escape(vitals['bp'])}", "", text_clean, flags=re.IGNORECASE)
-        text_clean = re.sub(rf"Blood Pressure[:\s]*{re.escape(vitals['bp'])}", "", text_clean, flags=re.IGNORECASE)
-        text_clean = re.sub(rf"{re.escape(vitals['bp'])}\s*mmHg", "", text_clean, flags=re.IGNORECASE)
-    
-    if vitals['pr']:
-        # Remove PR mentions
-        text_clean = re.sub(rf"PR[:\s]*{re.escape(vitals['pr'])}", "", text_clean, flags=re.IGNORECASE)
-        text_clean = re.sub(rf"Pulse Rate[:\s]*{re.escape(vitals['pr'])}", "", text_clean, flags=re.IGNORECASE)
-        text_clean = re.sub(rf"{re.escape(vitals['pr'])}\s*bpm", "", text_clean, flags=re.IGNORECASE)
-    
-    if vitals['rbs']:
-        # Remove RBS mentions
-        text_clean = re.sub(rf"RBS[:\s]*{re.escape(vitals['rbs'])}", "", text_clean, flags=re.IGNORECASE)
-        text_clean = re.sub(rf"Random Blood Sugar[:\s]*{re.escape(vitals['rbs'])}", "", text_clean, flags=re.IGNORECASE)
-        text_clean = re.sub(rf"{re.escape(vitals['rbs'])}\s*mg/dL", "", text_clean, flags=re.IGNORECASE)
-    
-    # Clean up extra whitespace
-    text_clean = re.sub(r'\s+', ' ', text_clean)
-    return text_clean.strip()
-
-def extract_chief_complaint_advanced(text):
-    """Enhanced chief complaint extraction"""
+def extract_chief_complaint_smart(text):
+    """Extract chief complaint only if explicitly mentioned"""
     patterns = [
-        r'complains? of ([^.]+)',
-        r'came with complaints? of ([^.]+)',
-        r'presents with ([^.]+)',
-        r'presented with ([^.]+)',
-        r'main concern is ([^.]+)',
-        r'chief complaint[:\s]*([^.]+)',
-        r'c/o[:\s]*([^.]+)',
-        r'presenting complaint[:\s]*([^.]+)',
-        r'patient reports ([^.]+)',
-        r'suffering from ([^.]+)',
-        r'history of ([^.]+)',
-        r'came for ([^.]+)',
-        r'visited for ([^.]+)'
+        r'complaint(?:s)?\s+of\s+([^.!?]+)[.!?]',
+        r'presented?\s+with\s+([^.!?]+)[.!?]',
+        r'complain(?:s|ing)?\s+(?:of|about)\s+([^.!?]+)[.!?]',
+        r'came\s+with\s+([^.!?]+)[.!?]',
+        r'chief\s+complaint\s*[:\-]?\s*([^.!?]+)[.!?]',
+        r'main\s+concern\s*[:\-]?\s*([^.!?]+)[.!?]',
+        r'primary\s+symptom\s*[:\-]?\s*([^.!?]+)[.!?]',
+        r'history\s+of\s+present\s+illness\s*[:\-]?\s*([^.!?]+)[.!?]'
     ]
     
     for pattern in patterns:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             complaint = match.group(1).strip()
-            # Clean up and normalize
-            complaint = re.sub(r'\s+', ' ', complaint)
-            complaint = complaint.rstrip('.,')
-            # Remove vitals if accidentally captured
-            complaint = re.sub(r'BP[^,]*,?|PR[^,]*,?|RBS[^,]*,?', '', complaint, flags=re.IGNORECASE).strip()
-            if len(complaint) > 10:  # Ensure meaningful content
+            # Clean up the complaint
+            complaint = re.sub(r'^(a|an|the)\s+', '', complaint, flags=re.IGNORECASE)
+            complaint = complaint.strip(' .,;')
+            
+            if len(complaint) > 5:  # Must be meaningful
+                print(f"✅ Found chief complaint: {complaint}")
                 return complaint
     
-    return "General medical consultation"
+    print("❌ No chief complaint found")
+    return ""
 
-def extract_consult_summary_advanced(text, vitals):
-    """Enhanced consultation summary extraction excluding vitals"""
+def extract_consultation_summary_smart(text):
+    """Extract consultation summary from examination findings and clinical notes"""
     summary_parts = []
     
     # Look for examination findings
     exam_patterns = [
-        r'on examination[^.]*\.([^.]+)',
-        r'physical examination[^.]*\.([^.]+)',
-        r'clinical findings[^.]*\.([^.]+)',
-        r'examination revealed ([^.]+)',
-        r'findings include ([^.]+)',
-        r'assessment showed ([^.]+)',
-        r'tests positive for ([^.]+)',
-        r'tests negative for ([^.]+)',
-        r'impression[:\s]*([^.]+)',
-        r'diagnosis[:\s]*([^.]+)',
-        r'likely ([^.]+)',
-        r'consistent with ([^.]+)',
-        r'appears to have ([^.]+)'
+        r'on\s+(?:physical\s+)?examination[,:]?\s*([^.!?]+)',
+        r'examination\s+(?:shows?|reveals?)\s+([^.!?]+)',
+        r'physical\s+findings?\s*[:\-]?\s*([^.!?]+)',
+        r'clinical\s+(?:examination|findings?)\s*[:\-]?\s*([^.!?]+)',
+        r'assessment\s*[:\-]?\s*([^.!?]+)',
+        r'impression\s*[:\-]?\s*([^.!?]+)',
+        r'(?:he|she|patient)\s+(?:appears?|looks?|seems?)\s+([^.!?]+)'
     ]
     
     for pattern in exam_patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
         for match in matches:
             finding = match.strip()
-            # Exclude vitals and clean
-            finding = re.sub(r'BP[^,]*,?|PR[^,]*,?|RBS[^,]*,?', '', finding, flags=re.IGNORECASE).strip()
-            finding = re.sub(r'\s+', ' ', finding)
-            if len(finding) > 5:
+            # Remove vital signs from summary to avoid duplication
+            finding = re.sub(r'\b(?:blood\s+pressure|bp)\s+is\s+\d+/\d+', '', finding, flags=re.IGNORECASE)
+            finding = re.sub(r'\b(?:pulse|heart\s+rate|pr|hr)\s+is\s+\d+', '', finding, flags=re.IGNORECASE)
+            finding = re.sub(r'\b(?:temperature|temp)\s+is\s+\d+', '', finding, flags=re.IGNORECASE)
+            finding = re.sub(r'\bsaturation\s+is\s+\d+%?', '', finding, flags=re.IGNORECASE)
+            
+            finding = re.sub(r'\s+', ' ', finding).strip(' .,;')
+            if len(finding) > 10:
                 summary_parts.append(finding)
     
-    # Look for specific clinical conditions
-    condition_patterns = [
-        r'appears?\s+(anxious|nervous|distressed|comfortable|stable)',
-        r'(poor|bad|good|adequate)\s+(sleep|appetite)',
-        r'(chest pain|chest discomfort|abdominal pain)',
-        r'(shortness of breath|breathlessness|dyspnea)',
-        r'(nausea|vomiting|diarrhea|constipation)',
-        r'(fever|headache|dizziness|fatigue)',
-        r'(mild|moderate|severe)\s+([^.]+)',
-        r'(positive|negative)\s+for\s+([^.]+)'
+    # Look for clinical observations
+    observation_patterns = [
+        r'(?:patient|he|she)\s+(?:denies?|reports?|has|shows?)\s+([^.!?]+)',
+        r'no\s+(?:signs?|symptoms?)\s+of\s+([^.!?]+)',
+        r'positive\s+for\s+([^.!?]+)',
+        r'negative\s+for\s+([^.!?]+)',
+        r'(?:mild|moderate|severe)\s+([^.!?]+)',
+        r'normal\s+([^.!?]+)',
+        r'abnormal\s+([^.!?]+)'
     ]
     
-    for pattern in condition_patterns:
+    for pattern in observation_patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
         for match in matches:
-            if isinstance(match, tuple):
-                condition = ' '.join(match).strip()
-            else:
-                condition = match.strip()
-            if len(condition) > 3:
-                summary_parts.append(f"Patient {condition}")
+            observation = match.strip(' .,;')
+            if len(observation) > 5 and not re.search(r'\d+/\d+|\d+\s*bpm|\d+%', observation):
+                summary_parts.append(f"Patient {observation}")
     
     if summary_parts:
         # Remove duplicates and combine
-        unique_parts = list(dict.fromkeys(summary_parts))
-        return '. '.join(unique_parts) + '.'
+        unique_parts = []
+        for part in summary_parts:
+            if part not in unique_parts:
+                unique_parts.append(part)
+        
+        result = '. '.join(unique_parts[:3])  # Limit to 3 most relevant findings
+        if result and not result.endswith('.'):
+            result += '.'
+        print(f"✅ Found consultation summary: {result}")
+        return result
     
-    return "Clinical examination completed. Patient evaluated thoroughly."
+    print("❌ No consultation summary found")
+    return ""
 
-def extract_medications_advanced(text):
-    """Enhanced medication extraction with comprehensive patterns"""
+def extract_vitals_smart(text):
+    """Extract vital signs only if explicitly mentioned with values"""
+    vitals = {"bp": "", "pr": "", "rbs": ""}
+    
+    # Blood Pressure patterns - only extract if numbers are present
+    bp_patterns = [
+        r'blood\s+pressure\s+is\s+(\d{2,3}\/\d{2,3})',
+        r'bp\s+(?:is\s+)?(\d{2,3}\/\d{2,3})',
+        r'(\d{2,3}\/\d{2,3})\s*mmhg',
+        r'systolic\s+\d+\s+diastolic\s+\d+|(\d{2,3}\/\d{2,3})'
+    ]
+    
+    for pattern in bp_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match and match.group(1):
+            vitals['bp'] = match.group(1)
+            print(f"✅ Found BP: {vitals['bp']}")
+            break
+    
+    # Pulse/Heart Rate patterns
+    pr_patterns = [
+        r'pulse\s+(?:rate\s+)?is\s+(\d{2,3})',
+        r'heart\s+rate\s+is\s+(\d{2,3})',
+        r'pr\s+(?:is\s+)?(\d{2,3})',
+        r'hr\s+(?:is\s+)?(\d{2,3})',
+        r'(\d{2,3})\s*(?:beats?\s*per\s*minute|bpm)'
+    ]
+    
+    for pattern in pr_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match and match.group(1):
+            vitals['pr'] = match.group(1)
+            print(f"✅ Found PR: {vitals['pr']}")
+            break
+    
+    # Blood Sugar patterns
+    rbs_patterns = [
+        r'random\s+blood\s+sugar\s+is\s+(\d{2,3})',
+        r'blood\s+sugar\s+is\s+(\d{2,3})',
+        r'rbs\s+(?:is\s+)?(\d{2,3})',
+        r'glucose\s+(?:level\s+)?(?:is\s+)?(\d{2,3})',
+        r'(\d{2,3})\s*mg\/dl'
+    ]
+    
+    for pattern in rbs_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match and match.group(1):
+            vitals['rbs'] = match.group(1)
+            print(f"✅ Found RBS: {vitals['rbs']}")
+            break
+    
+    # Only return vitals if at least one is found
+    if any(vitals.values()):
+        print(f"✅ Extracted vitals: {vitals}")
+        return vitals
+    
+    print("❌ No vitals found")
+    return {"bp": "", "pr": "", "rbs": ""}
+
+def extract_medications_smart(text):
+    """Extract medications only if explicitly mentioned"""
     medications = []
     
-    # Common medications database with enhanced patterns
-    medication_db = [
-        {"names": ["Paracetamol", "Acetaminophen"], "default_dose": "500mg", "dose_pattern": "1-0-1", "duration": "5 days", "when": "After food"},
-        {"names": ["Metformin"], "default_dose": "500mg", "dose_pattern": "1-0-1", "duration": "ongoing", "when": "Before food"},
-        {"names": ["Aspirin"], "default_dose": "75mg", "dose_pattern": "0-0-1", "duration": "ongoing", "when": "After food"},
-        {"names": ["Atorvastatin"], "default_dose": "10mg", "dose_pattern": "0-0-1", "duration": "ongoing", "when": "After dinner"},
-        {"names": ["Amlodipine"], "default_dose": "5mg", "dose_pattern": "1-0-0", "duration": "ongoing", "when": "After breakfast"},
-        {"names": ["Pantoprazole", "Omeprazole"], "default_dose": "40mg", "dose_pattern": "1-0-0", "duration": "30 days", "when": "Before food"},
-        {"names": ["Insulin"], "default_dose": "As prescribed", "dose_pattern": "As directed", "duration": "ongoing", "when": "Before meals"},
-        {"names": ["Ondansetron"], "default_dose": "4mg", "dose_pattern": "1-1-1", "duration": "3 days", "when": "Before food"},
-        {"names": ["Azithromycin"], "default_dose": "500mg", "dose_pattern": "1-0-0", "duration": "3 days", "when": "After food"},
-        {"names": ["Ciprofloxacin"], "default_dose": "500mg", "dose_pattern": "1-0-1", "duration": "7 days", "when": "After food"},
-        {"names": ["Amoxicillin"], "default_dose": "500mg", "dose_pattern": "1-1-1", "duration": "7 days", "when": "After food"},
-        {"names": ["Dolo", "Dolo 650"], "default_dose": "650mg", "dose_pattern": "1-1-1", "duration": "3 days", "when": "After food"},
-        {"names": ["Telmisartan"], "default_dose": "40mg", "dose_pattern": "1-0-0", "duration": "ongoing", "when": "Before food"},
-        {"names": ["Losartan"], "default_dose": "50mg", "dose_pattern": "1-0-0", "duration": "ongoing", "when": "Before food"}
+    # Common medication database
+    common_meds = {
+        'aspirin': {'dose': '75mg', 'pattern': '0-0-1', 'duration': 'ongoing', 'when': 'after food'},
+        'paracetamol': {'dose': '500mg', 'pattern': '1-0-1', 'duration': '5 days', 'when': 'after food'},
+        'atorvastatin': {'dose': '20mg', 'pattern': '0-0-1', 'duration': 'ongoing', 'when': 'after dinner'},
+        'statin': {'dose': '20mg', 'pattern': '0-0-1', 'duration': 'ongoing', 'when': 'after dinner'},
+        'metformin': {'dose': '500mg', 'pattern': '1-0-1', 'duration': 'ongoing', 'when': 'before food'},
+        'amlodipine': {'dose': '5mg', 'pattern': '1-0-0', 'duration': 'ongoing', 'when': 'after breakfast'},
+        'pantoprazole': {'dose': '40mg', 'pattern': '1-0-0', 'duration': '30 days', 'when': 'before food'},
+        'omeprazole': {'dose': '20mg', 'pattern': '1-0-0', 'duration': '30 days', 'when': 'before food'},
+        'insulin': {'dose': 'as prescribed', 'pattern': 'as directed', 'duration': 'ongoing', 'when': 'before meals'},
+        'lisinopril': {'dose': '10mg', 'pattern': '1-0-0', 'duration': 'ongoing', 'when': 'before food'},
+        'losartan': {'dose': '50mg', 'pattern': '1-0-0', 'duration': 'ongoing', 'when': 'before food'},
+        'simvastatin': {'dose': '20mg', 'pattern': '0-0-1', 'duration': 'ongoing', 'when': 'after dinner'}
+    }
+    
+    # Medication extraction patterns
+    med_patterns = [
+        r'(?:started|prescribed|given|ordered)\s+(?:him|her|patient)?\s*(?:on\s+)?([a-z]+(?:\s+\d+mg)?)',
+        r'(?:started|prescribed)\s+([a-z]+(?:\s+\d+mg)?)',
+        r'(?:tab|tablet)\s+([a-z]+(?:\s+\d+mg)?)',
+        r'i\s+have\s+(?:started|prescribed|given)\s+(?:him|her)?\s*(?:on\s+)?([a-z]+)',
+        r'put\s+(?:him|her|patient)\s+on\s+([a-z]+)'
     ]
     
     medication_id = 1
-    
-    for med in medication_db:
-        for name in med["names"]:
-            # Enhanced pattern matching
-            patterns = [
-                rf'\b{re.escape(name)}\s*([0-9]+\s*mg)?',
-                rf'Tab\s+{re.escape(name)}\s*([0-9]+\s*mg)?',
-                rf'{re.escape(name)}\s+([0-9]+\s*mg)',
-                rf'{re.escape(name)}\s+tablet',
-                rf'started.*?{re.escape(name)}',
-                rf'prescribed.*?{re.escape(name)}',
-                rf'given.*?{re.escape(name)}'
-            ]
-            
-            for pattern in patterns:
-                match = re.search(pattern, text, re.IGNORECASE)
-                if match:
-                    dose_found = match.group(1) if match.groups() and match.group(1) else med["default_dose"]
-                    
-                    # Look for specific dosage in context
-                    context = text[max(0, match.start()-50):match.end()+100]
-                    
-                    # Extract custom dosage patterns
-                    dose_pattern = extract_dosage_pattern(context) or med["dose_pattern"]
-                    duration = extract_duration_pattern(context) or med["duration"]
-                    when = extract_timing_pattern(context) or med["when"]
-                    
-                    medications.append({
-                        "medication": f"{name} {dose_found}",
-                        "dose": dose_pattern,
-                        "duration": duration,
-                        "medication_when": when,
-                        "medication_id": str(medication_id)
-                    })
-                    medication_id += 1
-                    break
-    
-    # Generic medication extraction for unlisted medications
-    generic_patterns = [
-        r'Tab\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)\s*([0-9]+\s*mg)?',
-        r'Syrup\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)',
-        r'Injection\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)',
-        r'prescribed\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)',
-        r'started on\s+([A-Za-z]+(?:\s+[A-Za-z]+)*)'
-    ]
-    
-    for pattern in generic_patterns:
+    for pattern in med_patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
         for match in matches:
-            if isinstance(match, tuple):
-                med_name = match[0].strip()
-                dose = match[1] if len(match) > 1 and match[1] else "As prescribed"
-            else:
-                med_name = match.strip()
-                dose = "As prescribed"
+            med_name = match.strip().lower()
             
-            # Check if already extracted
-            if not any(med_name.lower() in med["medication"].lower() for med in medications):
+            # Check if it's a known medication
+            base_name = re.sub(r'\s*\d+mg', '', med_name)
+            
+            if base_name in common_meds:
+                # Extract dose if mentioned
+                dose_match = re.search(r'(\d+\s*mg)', med_name)
+                if dose_match:
+                    dose = dose_match.group(1)
+                else:
+                    dose = common_meds[base_name]['dose']
+                
                 medications.append({
-                    "medication": f"{med_name} {dose}",
-                    "dose": "1-0-1",
-                    "duration": "As directed",
-                    "medication_when": "After food",
+                    "medication": f"{base_name.title()} {dose}",
+                    "dose": common_meds[base_name]['pattern'],
+                    "duration": common_meds[base_name]['duration'],
+                    "medication_when": common_meds[base_name]['when'],
                     "medication_id": str(medication_id)
                 })
                 medication_id += 1
+                print(f"✅ Found medication: {base_name.title()}")
+    
+    if medications:
+        print(f"✅ Extracted medications: {len(medications)} items")
+    else:
+        print("❌ No medications found")
     
     return medications
 
-def extract_dosage_pattern(text):
-    """Extract dosage pattern from context"""
-    patterns = [
-        r'([0-9])-([0-9])-([0-9])',
-        r'([0-9])\s*times?\s*(?:a\s*)?day',
-        r'once\s*(?:a\s*)?day',
-        r'twice\s*(?:a\s*)?day',
-        r'thrice\s*(?:a\s*)?day',
-        r'three\s*times\s*(?:a\s*)?day'
-    ]
-    
-    for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            if pattern == r'([0-9])-([0-9])-([0-9])':
-                return f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
-            elif pattern == r'([0-9])\s*times?\s*(?:a\s*)?day':
-                times = int(match.group(1))
-                if times == 1:
-                    return "1-0-0"
-                elif times == 2:
-                    return "1-0-1"
-                elif times == 3:
-                    return "1-1-1"
-                else:
-                    return f"{times} times daily"
-            elif 'once' in match.group(0).lower():
-                return "1-0-0"
-            elif 'twice' in match.group(0).lower():
-                return "1-0-1"
-            elif 'thrice' in match.group(0).lower() or 'three times' in match.group(0).lower():
-                return "1-1-1"
-    
-    return None
-
-def extract_duration_pattern(text):
-    """Extract duration from context"""
-    patterns = [
-        r'for\s*([0-9]+)\s*(day|week|month)s?',
-        r'([0-9]+)\s*(day|week|month)s?',
-        r'ongoing',
-        r'continue',
-        r'as needed',
-        r'indefinitely'
-    ]
-    
-    for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            if match.groups() and len(match.groups()) >= 2:
-                return f"{match.group(1)} {match.group(2)}s" if int(match.group(1)) > 1 else f"{match.group(1)} {match.group(2)}"
-            else:
-                return match.group(0)
-    
-    return None
-
-def extract_timing_pattern(text):
-    """Extract timing information from context"""
-    patterns = [
-        r'before\s*(?:food|meals?|eating)',
-        r'after\s*(?:food|meals?|eating)',
-        r'with\s*(?:food|meals?)',
-        r'empty\s*stomach',
-        r'at\s*night',
-        r'in\s*the\s*morning',
-        r'before\s*breakfast',
-        r'after\s*dinner'
-    ]
-    
-    for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            return match.group(0).title()
-    
-    return None
-
-def extract_investigations_advanced(text):
-    """Enhanced investigation extraction"""
+def extract_investigations_smart(text):
+    """Extract investigations/tests only if explicitly mentioned"""
     investigations = []
-    investigation_id = 1
     
-    # Comprehensive investigation database
-    investigation_db = [
-        {"names": ["CBC", "Complete Blood Count", "Complete Blood Picture", "CBP"], "id": "127"},
-        {"names": ["HbA1c", "Glycated Hemoglobin"], "id": "1"},
-        {"names": ["Lipid Profile", "Lipid Panel"], "id": "329"},
-        {"names": ["Liver Function Test", "LFT"], "id": "234"},
-        {"names": ["Kidney Function Test", "KFT", "Renal Function Test"], "id": "156"},
-        {"names": ["Thyroid Function Test", "TFT"], "id": "89"},
-        {"names": ["ECG", "EKG", "Electrocardiogram"], "id": "45"},
-        {"names": ["Chest X-Ray", "CXR", "Chest X Ray"], "id": "78"},
-        {"names": ["Urine Routine", "Urine Analysis", "Urinalysis"], "id": "12"},
-        {"names": ["Blood Sugar", "Fasting Blood Sugar", "FBS"], "id": "23"},
-        {"names": ["Postprandial Blood Sugar", "PPBS"], "id": "24"},
-        {"names": ["Creatinine", "Serum Creatinine"], "id": "34"},
-        {"names": ["Urea", "Blood Urea"], "id": "35"},
-        {"names": ["Hemoglobin", "Hb"], "id": "56"},
-        {"names": ["ESR", "Erythrocyte Sedimentation Rate"], "id": "67"},
-        {"names": ["CRP", "C-Reactive Protein"], "id": "78"},
-        {"names": ["Vitamin D", "25-OH Vitamin D"], "id": "89"},
-        {"names": ["Vitamin B12"], "id": "90"},
-        {"names": ["Iron Studies", "Serum Iron"], "id": "91"},
-        {"names": ["Ultrasound", "USG"], "id": "102"},
-        {"names": ["CT Scan", "Computed Tomography"], "id": "103"},
-        {"names": ["MRI", "Magnetic Resonance Imaging"], "id": "104"},
-        {"names": ["Stool Routine", "Stool Examination"], "id": "105"},
-        {"names": ["Culture", "Blood Culture", "Urine Culture"], "id": "106"},
-        {"names": ["Dengue", "Dengue NS1", "Dengue IgM"], "id": "107"},
-        {"names": ["Malaria", "Malaria Test", "MP"], "id": "108"},
-        {"names": ["Typhoid", "Widal Test"], "id": "109"},
-        {"names": ["HIV", "HIV Test"], "id": "110"},
-        {"names": ["HBsAg", "Hepatitis B"], "id": "111"},
-        {"names": ["HCV", "Hepatitis C"], "id": "112"}
+    # Common investigations database
+    common_tests = {
+        'ecg': {'name': 'ECG', 'id': '101'},
+        'ekg': {'name': 'ECG', 'id': '101'},
+        'electrocardiogram': {'name': 'ECG', 'id': '101'},
+        'chest x-ray': {'name': 'Chest X-Ray', 'id': '102'},
+        'cxr': {'name': 'Chest X-Ray', 'id': '102'},
+        'cardiac enzyme': {'name': 'Cardiac Enzyme Panel', 'id': '103'},
+        'cardiac enzymes': {'name': 'Cardiac Enzyme Panel', 'id': '103'},
+        'enzyme panel': {'name': 'Cardiac Enzyme Panel', 'id': '103'},
+        'troponin': {'name': 'Troponin', 'id': '104'},
+        'cbc': {'name': 'Complete Blood Count', 'id': '105'},
+        'complete blood count': {'name': 'Complete Blood Count', 'id': '105'},
+        'lipid profile': {'name': 'Lipid Profile', 'id': '106'},
+        'liver function': {'name': 'Liver Function Test', 'id': '107'},
+        'lft': {'name': 'Liver Function Test', 'id': '107'},
+        'kidney function': {'name': 'Kidney Function Test', 'id': '108'},
+        'kft': {'name': 'Kidney Function Test', 'id': '108'},
+        'blood sugar': {'name': 'Blood Sugar Test', 'id': '109'},
+        'hba1c': {'name': 'HbA1c', 'id': '110'},
+        'urine': {'name': 'Urine Analysis', 'id': '111'},
+        'urine analysis': {'name': 'Urine Analysis', 'id': '111'},
+        'thyroid': {'name': 'Thyroid Function Test', 'id': '112'},
+        'tft': {'name': 'Thyroid Function Test', 'id': '112'}
+    }
+    
+    # Investigation extraction patterns
+    investigation_patterns = [
+        r'(?:ordered|advised|requested|sent\s+for)\s+(?:a\s+)?([a-z\s]+(?:test|panel|profile|analysis)?)',
+        r'i\s+have\s+ordered\s+(?:a\s+)?([a-z\s]+)',
+        r'(?:test|check|evaluate)\s+(?:for\s+)?([a-z\s]+)',
+        r'rule\s+out.*?(?:with\s+)?(?:a\s+)?([a-z\s]+(?:test|panel|analysis)?)'
     ]
     
-    # Keywords that indicate investigations
-    investigation_keywords = [
-        r'ordered?\s*([^.]+)',
-        r'advised?\s*([^.]+)',
-        r'requested?\s*([^.]+)',
-        r'sent for\s*([^.]+)',
-        r'refer for\s*([^.]+)',
-        r'check\s*([^.]+)',
-        r'evaluate\s*([^.]+)',
-        r'investigate\s*([^.]+)',
-        r'test for\s*([^.]+)',
-        r'screening for\s*([^.]+)',
-        r'lab work\s*([^.]+)',
-        r'blood work\s*([^.]+)'
-    ]
-    
-    for inv in investigation_db:
-        for name in inv["names"]:
-            pattern = rf'\b{re.escape(name)}\b'
-            if re.search(pattern, text, re.IGNORECASE):
-                investigations.append({
-                    "investigation": inv["names"][0],  # Use primary name
-                    "investigation_id": inv["id"]
-                })
-                break
-    
-    # Generic investigation extraction
-    for keyword_pattern in investigation_keywords:
-        matches = re.findall(keyword_pattern, text, re.IGNORECASE)
+    investigation_id = 200
+    for pattern in investigation_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
         for match in matches:
-            # Look for medical test names in the match
-            potential_tests = re.findall(r'\b[A-Z]{2,}\b|\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', match)
-            for test in potential_tests:
-                test = test.strip()
-                if len(test) > 2 and not any(test.lower() in inv["investigation"].lower() for inv in investigations):
+            test_name = match.strip().lower()
+            test_name = re.sub(r'\s+', ' ', test_name)
+            
+            # Check if it matches known investigations
+            for key, test_info in common_tests.items():
+                if key in test_name or test_name in key:
                     investigations.append({
-                        "investigation": test,
+                        "investigation": test_info['name'],
+                        "investigation_id": test_info['id']
+                    })
+                    print(f"✅ Found investigation: {test_info['name']}")
+                    break
+            else:
+                # If it's a reasonable test name, add it
+                if len(test_name) > 3 and any(word in test_name for word in ['test', 'scan', 'ray', 'panel', 'profile', 'analysis']):
+                    investigations.append({
+                        "investigation": test_name.title(),
                         "investigation_id": str(investigation_id)
                     })
                     investigation_id += 1
+                    print(f"✅ Found custom investigation: {test_name.title()}")
+    
+    if investigations:
+        print(f"✅ Extracted investigations: {len(investigations)} items")
+    else:
+        print("❌ No investigations found")
     
     return investigations
 
-def extract_medicine_templates_advanced(text):
-    """Extract medicine templates (macro references)"""
+def extract_templates_smart(text, template_type):
+    """Extract medicine or super templates if mentioned"""
     templates = []
-    template_id = 1
     
-    # Look for macro keywords
-    macro_patterns = [
-        r'macro\s*([^.]+)',
-        r'template\s*([^.]+)',
-        r'protocol\s*for\s*([^.]+)',
-        r'management\s*plan\s*for\s*([^.]+)',
-        r'standard\s*care\s*for\s*([^.]+)',
-        r'follow\s*guidelines\s*for\s*([^.]+)'
-    ]
+    if template_type == "medicine":
+        patterns = [
+            r'(?:medicine\s+)?template\s+([a-z\s]+)',
+            r'protocol\s+for\s+([a-z\s]+)',
+            r'standard\s+treatment\s+for\s+([a-z\s]+)'
+        ]
+    else:  # super templates
+        patterns = [
+            r'super\s+template\s+([a-z\s]+)',
+            r'comprehensive\s+protocol\s+([a-z\s]+)',
+            r'advanced\s+treatment\s+([a-z\s]+)'
+        ]
     
-    for pattern in macro_patterns:
+    template_id = 300 if template_type == "medicine" else 400
+    for pattern in patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
         for match in matches:
             template_name = match.strip().title()
             if len(template_name) > 3:
+                key = "medicine_template_id" if template_type == "medicine" else "super_template_id"
                 templates.append({
                     "template_name": template_name,
-                    "medicine_template_id": str(template_id)
+                    key: str(template_id)
                 })
                 template_id += 1
+                print(f"✅ Found {template_type} template: {template_name}")
+    
+    if not templates:
+        print(f"❌ No {template_type} templates found")
     
     return templates
 
-def extract_super_templates_advanced(text):
-    """Extract super templates (super macro references)"""
-    templates = []
-    template_id = 1
-    
-    # Look for super macro keywords
-    super_patterns = [
-        r'super\s*macro\s*([^.]+)',
-        r'comprehensive\s*protocol\s*([^.]+)',
-        r'advanced\s*template\s*([^.]+)',
-        r'complete\s*care\s*plan\s*([^.]+)',
-        r'integrated\s*management\s*([^.]+)',
-        r'master\s*protocol\s*([^.]+)'
-    ]
-    
-    for pattern in super_patterns:
-        matches = re.findall(pattern, text, re.IGNORECASE)
-        for match in matches:
-            template_name = match.strip().title()
-            if len(template_name) > 3:
-                templates.append({
-                    "template_name": template_name,
-                    "super_template_id": str(template_id)
-                })
-                template_id += 1
-    
-    return templates
-
-def extract_advice_advanced(text):
-    """Enhanced advice extraction"""
+def extract_advice_smart(text):
+    """Extract medical advice only if explicitly mentioned"""
     advice_parts = []
     
-    # Look for explicit advice sections
+    # Advice extraction patterns
     advice_patterns = [
-        r'advice[d:]?\s*([^.]+\.)',
-        r'recommend[ed]?\s*([^.]+\.)',
-        r'suggest[ed]?\s*([^.]+\.)',
-        r'patient advised\s*([^.]+\.)',
-        r'instructions?\s*([^.]+\.)',
-        r'plan[:\s]*([^.]+\.)',
-        r'discharge[d]?\s*with\s*([^.]+\.)',
-        r'follow[:\s]*([^.]+\.)',
-        r'continue\s*([^.]+\.)',
-        r'maintain\s*([^.]+\.)',
-        r'avoid\s*([^.]+\.)',
-        r'take\s*([^.]+\.)'
+        r'(?:advised?|recommended?|suggested?)\s+(?:him|her|patient)?\s*(?:to\s+)?([^.!?]+)',
+        r'i\s+(?:would\s+)?(?:advise|recommend|suggest)\s+([^.!?]+)',
+        r'patient\s+(?:should|must|needs?\s+to)\s+([^.!?]+)',
+        r'instructions?\s*[:\-]?\s*([^.!?]+)',
+        r'(?:follow|continue)\s+([^.!?]+)',
+        r'avoid\s+([^.!?]+)',
+        r'maintain\s+([^.!?]+)'
     ]
     
     for pattern in advice_patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
         for match in matches:
-            advice = match.strip()
-            # Clean advice
-            advice = re.sub(r'BP[^,]*,?|PR[^,]*,?|RBS[^,]*,?', '', advice, flags=re.IGNORECASE).strip()
-            if len(advice) > 10:
-                advice_parts.append(advice)
-    
-    # Look for common medical advice patterns
-    if re.search(r'medication.*(schedule|regularly|as prescribed)', text, re.IGNORECASE):
-        advice_parts.append("Follow medication schedule as prescribed.")
-    
-    if re.search(r'(monitor|check|watch).*symptoms?', text, re.IGNORECASE):
-        advice_parts.append("Monitor symptoms closely.")
-        
-    if re.search(r'(diet|dietary|food|eating)', text, re.IGNORECASE):
-        advice_parts.append("Follow dietary recommendations.")
-        
-    if re.search(r'(exercise|physical activity|walk)', text, re.IGNORECASE):
-        advice_parts.append("Maintain regular physical activity.")
-    
-    if re.search(r'(rest|adequate sleep)', text, re.IGNORECASE):
-        advice_parts.append("Take adequate rest and maintain proper sleep.")
-    
-    if re.search(r'(hydration|fluid)', text, re.IGNORECASE):
-        advice_parts.append("Maintain proper hydration.")
+            advice = match.strip(' .,;')
+            # Filter out medications and vital signs
+            if not re.search(r'\d+mg|\d+/\d+|medication|tablet|pill', advice, re.IGNORECASE):
+                if len(advice) > 10:
+                    advice_parts.append(advice)
     
     if advice_parts:
         # Remove duplicates and combine
         unique_advice = list(dict.fromkeys(advice_parts))
-        return ' '.join(unique_advice)
+        result = '. '.join(unique_advice[:2])  # Limit to 2 most relevant advice points
+        if result and not result.endswith('.'):
+            result += '.'
+        print(f"✅ Found advice: {result}")
+        return result
     
-    return "Continue current treatment and follow up as scheduled."
+    print("❌ No advice found")
+    return ""
 
-def extract_follow_up_advanced(text):
-    """Enhanced follow-up day extraction"""
+def extract_follow_up_day_smart(text):
+    """Extract follow-up timing only if explicitly mentioned"""
     patterns = [
-        r'follow up in ([0-9]+)\s*(day|week|month)s?',
-        r'next visit in ([0-9]+)\s*(day|week|month)s?',
-        r'return after ([0-9]+)\s*(day|week|month)s?',
-        r'see again in ([0-9]+)\s*(day|week|month)s?',
-        r'review in ([0-9]+)\s*(day|week|month)s?',
-        r'come back in ([0-9]+)\s*(day|week|month)s?',
-        r'appointment in ([0-9]+)\s*(day|week|month)s?'
+        r'follow\s+up\s+in\s+(\d+)\s*(day|week|month)s?',
+        r'(?:see|visit)\s+(?:again|back)\s+in\s+(\d+)\s*(day|week|month)s?',
+        r'return\s+(?:after|in)\s+(\d+)\s*(day|week|month)s?',
+        r'next\s+(?:visit|appointment)\s+in\s+(\d+)\s*(day|week|month)s?',
+        r'reassessment\s+in\s+(\d+)\s*(day|week|month)s?',
+        r'come\s+back\s+(?:after|in)\s+(\d+)\s*(day|week|month)s?'
     ]
     
     for pattern in patterns:
@@ -681,31 +492,43 @@ def extract_follow_up_advanced(text):
         if match:
             number = match.group(1)
             unit = match.group(2).lower()
-            # Proper formatting
+            
             if unit == 'day':
-                return f"{number} Days" if int(number) > 1 else f"{number} Day"
+                result = f"{number} Day{'s' if int(number) > 1 else ''}"
             elif unit == 'week':
-                return f"{number} Weeks" if int(number) > 1 else f"{number} Week"
+                result = f"{number} Week{'s' if int(number) > 1 else ''}"
             elif unit == 'month':
-                return f"{number} Months" if int(number) > 1 else f"{number} Month"
+                result = f"{number} Month{'s' if int(number) > 1 else ''}"
+            
+            print(f"✅ Found follow-up day: {result}")
+            return result
     
-    return "As needed"
+    print("❌ No follow-up day found")
+    return ""
 
-def extract_follow_up_mode_advanced(text):
-    """Enhanced follow-up mode extraction"""
-    if re.search(r'teleconsultation|video call|online|virtual|tele|phone call|telephone', text, re.IGNORECASE):
+def extract_follow_up_mode_smart(text):
+    """Extract follow-up mode only if explicitly mentioned"""
+    if re.search(r'tele(?:consultation)?|video\s+call|online|virtual|phone|remote', text, re.IGNORECASE):
+        print("✅ Found follow-up mode: Teleconsultation")
         return "Teleconsultation"
-    if re.search(r'clinic visit|in.person|office visit|physical visit|visit clinic', text, re.IGNORECASE):
+    elif re.search(r'clinic|office|in\s*person|visit|come\s+(?:to|back)', text, re.IGNORECASE):
+        print("✅ Found follow-up mode: Clinic Visit")
         return "Clinic Visit"
-    return "Clinic Visit"  # Default
+    
+    print("❌ No follow-up mode found")
+    return ""
 
-def extract_visit_type_advanced(text):
-    """Enhanced visit type extraction"""
-    if re.search(r'teleconsultation|tele|video|online|virtual|remote', text, re.IGNORECASE):
+def extract_visit_type_smart(text):
+    """Extract visit type only if explicitly mentioned"""
+    if re.search(r'tele(?:consultation)?|video|online|virtual|remote', text, re.IGNORECASE):
+        print("✅ Found visit type: Teleconsultation")
         return "Teleconsultation"
-    if re.search(r'clinic|in.person|office|physical|visited', text, re.IGNORECASE):
+    elif re.search(r'clinic|office|in\s*person|visit|came\s+to|presented\s+to', text, re.IGNORECASE):
+        print("✅ Found visit type: In Person")
         return "In Person"
-    return "In Person"  # Default
+    
+    print("❌ No visit type found")
+    return ""
 
 @app.route('/save', methods=['POST', 'OPTIONS'])
 def save_to_database():
@@ -777,7 +600,7 @@ def generate_pdf():
         if not patient_info['name'] or not extracted_data:
             return jsonify({"error": "Missing required data: patient_name, extracted_data"}), 400
 
-        # Ensure the filename is safe
+        # Generate PDF with enhanced formatting
         safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', patient_info['name'])
         pdf_filename = f"Medical_Report_{safe_name}_{patient_info['consult_id']}.pdf"
         
@@ -786,22 +609,22 @@ def generate_pdf():
                               leftMargin=0.75*inch, rightMargin=0.75*inch)
         styles = getSampleStyleSheet()
         
-        # Custom styles
+        # Custom styles for professional look
         custom_styles = {
             'Title': ParagraphStyle(
                 name='CustomTitle', parent=styles['Title'], 
                 fontName='Helvetica-Bold', fontSize=20, spaceAfter=12, 
-                textColor=colors.HexColor('#003087'), alignment=1
+                textColor=colors.HexColor('#0066CC'), alignment=1
             ),
             'SubTitle': ParagraphStyle(
                 name='CustomSubTitle', parent=styles['Normal'], 
                 fontName='Helvetica', fontSize=12, spaceAfter=8, 
-                textColor=colors.HexColor('#003087')
+                textColor=colors.HexColor('#0066CC')
             ),
             'Heading2': ParagraphStyle(
                 name='CustomHeading2', parent=styles['Heading2'], 
                 fontName='Helvetica-Bold', fontSize=14, spaceAfter=8, 
-                textColor=colors.HexColor('#003087')
+                textColor=colors.HexColor('#0066CC')
             ),
             'Normal': ParagraphStyle(
                 name='CustomNormal', parent=styles['Normal'], 
@@ -817,12 +640,12 @@ def generate_pdf():
 
         # Hospital Header
         elements.append(Paragraph("UNIDOC MEDICAL CENTER", custom_styles['Title']))
-        elements.append(Paragraph("Advanced Medical Consultation Report", custom_styles['SubTitle']))
+        elements.append(Paragraph("Professional Medical Consultation Report", custom_styles['SubTitle']))
         elements.append(Spacer(1, 0.2*inch))
 
-        # Horizontal Line
+        # Header line
         line_table = Table([[None]], colWidths=[6.5*inch], rowHeights=[2])
-        line_table.setStyle(TableStyle([('LINEBELOW', (0, 0), (-1, -1), 2, colors.HexColor('#003087'))]))
+        line_table.setStyle(TableStyle([('LINEBELOW', (0, 0), (-1, -1), 2, colors.HexColor('#0066CC'))]))
         elements.append(line_table)
         elements.append(Spacer(1, 0.2*inch))
 
@@ -839,7 +662,7 @@ def generate_pdf():
         patient_table.setStyle(TableStyle([
             ('FONT', (0, 0), (-1, -1), 'Helvetica'),
             ('FONTSIZE', (0, 0), (-1, -1), 11),
-            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#003087')),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#0066CC')),
             ('TEXTCOLOR', (1, 0), (1, -1), colors.black),
             ('TOPPADDING', (0, 0), (-1, -1), 6),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
@@ -850,6 +673,8 @@ def generate_pdf():
         elements.append(patient_table)
         elements.append(Spacer(1, 0.2*inch))
 
+        # Only add sections that have data
+        
         # Chief Complaint
         if extracted_data.get('chief_complaint'):
             elements.append(Paragraph("CHIEF COMPLAINT", custom_styles['Heading2']))
@@ -862,33 +687,36 @@ def generate_pdf():
             elements.append(Paragraph(extracted_data['consult_summary'], custom_styles['Normal']))
             elements.append(Spacer(1, 0.15*inch))
 
-        # Vitals
+        # Vitals - only if data exists
         vitals = extracted_data.get('vitals_examination', {})
-        if vitals and any(vitals.values()):
-            vitals_data = [
-                ["Parameter", "Value", "Unit"],
-                ["Blood Pressure", vitals.get('bp', 'Not recorded'), 'mmHg' if vitals.get('bp') else ''],
-                ["Pulse Rate", vitals.get('pr', 'Not recorded'), 'bpm' if vitals.get('pr') else ''],
-                ["Random Blood Sugar", vitals.get('rbs', 'Not recorded'), 'mg/dL' if vitals.get('rbs') else '']
-            ]
+        if vitals and any(vitals.get(key) for key in ['bp', 'pr', 'rbs']):
+            vitals_data = [["Parameter", "Value", "Unit"]]
             
-            vitals_table = Table(vitals_data, colWidths=[2.5*inch, 2*inch, 2*inch])
-            vitals_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003087')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('FONT', (0, 0), (-1, -1), 'Helvetica'),
-                ('FONTSIZE', (0, 0), (-1, -1), 11),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('TOPPADDING', (0, 0), (-1, -1), 6),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e9ecef'))
-            ]))
-            elements.append(Paragraph("VITAL SIGNS", custom_styles['Heading2']))
-            elements.append(vitals_table)
-            elements.append(Spacer(1, 0.15*inch))
+            if vitals.get('bp'):
+                vitals_data.append(["Blood Pressure", vitals['bp'], 'mmHg'])
+            if vitals.get('pr'):
+                vitals_data.append(["Pulse Rate", vitals['pr'], 'bpm'])
+            if vitals.get('rbs'):
+                vitals_data.append(["Random Blood Sugar", vitals['rbs'], 'mg/dL'])
+            
+            if len(vitals_data) > 1:  # Has data beyond header
+                vitals_table = Table(vitals_data, colWidths=[2.5*inch, 2*inch, 2*inch])
+                vitals_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0066CC')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                    ('FONT', (0, 0), (-1, -1), 'Helvetica'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 11),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('TOPPADDING', (0, 0), (-1, -1), 6),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e9ecef'))
+                ]))
+                elements.append(Paragraph("VITAL SIGNS", custom_styles['Heading2']))
+                elements.append(vitals_table)
+                elements.append(Spacer(1, 0.15*inch))
 
-        # Medications
-        if extracted_data.get('medication_data'):
+        # Medications - only if data exists
+        if extracted_data.get('medication_data') and len(extracted_data['medication_data']) > 0:
             elements.append(Paragraph("PRESCRIBED MEDICATIONS", custom_styles['Heading2']))
             med_data = [["Medication", "Dosage", "Duration", "Instructions"]]
             
@@ -902,7 +730,7 @@ def generate_pdf():
             
             med_table = Table(med_data, colWidths=[2*inch, 1.5*inch, 1.5*inch, 1.5*inch])
             med_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003087')),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0066CC')),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
                 ('FONT', (0, 0), (-1, -1), 'Helvetica'),
                 ('FONTSIZE', (0, 0), (-1, -1), 10),
@@ -914,8 +742,8 @@ def generate_pdf():
             elements.append(med_table)
             elements.append(Spacer(1, 0.15*inch))
 
-        # Investigations
-        if extracted_data.get('investigations'):
+        # Investigations - only if data exists
+        if extracted_data.get('investigations') and len(extracted_data['investigations']) > 0:
             elements.append(Paragraph("RECOMMENDED INVESTIGATIONS", custom_styles['Heading2']))
             inv_data = [["Investigation", "ID"]]
             
@@ -927,7 +755,7 @@ def generate_pdf():
             
             inv_table = Table(inv_data, colWidths=[4*inch, 2.5*inch])
             inv_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003087')),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0066CC')),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
                 ('FONT', (0, 0), (-1, -1), 'Helvetica'),
                 ('FONTSIZE', (0, 0), (-1, -1), 11),
@@ -939,8 +767,8 @@ def generate_pdf():
             elements.append(inv_table)
             elements.append(Spacer(1, 0.15*inch))
 
-        # Medicine Templates
-        if extracted_data.get('medicine_templates'):
+        # Medicine Templates - only if data exists
+        if extracted_data.get('medicine_templates') and len(extracted_data['medicine_templates']) > 0:
             elements.append(Paragraph("MEDICINE TEMPLATES", custom_styles['Heading2']))
             template_data = [["Template Name", "ID"]]
             
@@ -952,7 +780,7 @@ def generate_pdf():
             
             template_table = Table(template_data, colWidths=[4*inch, 2.5*inch])
             template_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003087')),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0066CC')),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
                 ('FONT', (0, 0), (-1, -1), 'Helvetica'),
                 ('FONTSIZE', (0, 0), (-1, -1), 11),
@@ -964,8 +792,8 @@ def generate_pdf():
             elements.append(template_table)
             elements.append(Spacer(1, 0.15*inch))
 
-        # Super Templates
-        if extracted_data.get('super_templates'):
+        # Super Templates - only if data exists
+        if extracted_data.get('super_templates') and len(extracted_data['super_templates']) > 0:
             elements.append(Paragraph("SUPER TEMPLATES", custom_styles['Heading2']))
             super_template_data = [["Template Name", "ID"]]
             
@@ -977,7 +805,7 @@ def generate_pdf():
             
             super_template_table = Table(super_template_data, colWidths=[4*inch, 2.5*inch])
             super_template_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003087')),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0066CC')),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
                 ('FONT', (0, 0), (-1, -1), 'Helvetica'),
                 ('FONTSIZE', (0, 0), (-1, -1), 11),
@@ -989,13 +817,13 @@ def generate_pdf():
             elements.append(super_template_table)
             elements.append(Spacer(1, 0.15*inch))
 
-        # Medical Advice
+        # Medical Advice - only if data exists
         if extracted_data.get('advice'):
             elements.append(Paragraph("MEDICAL ADVICE", custom_styles['Heading2']))
             elements.append(Paragraph(extracted_data['advice'], custom_styles['Normal']))
             elements.append(Spacer(1, 0.15*inch))
 
-        # Follow-up
+        # Follow-up - only if data exists
         follow_up_day = extracted_data.get('follow_up_day', '')
         follow_up_mode = extracted_data.get('follow_up_mode', '')
         if follow_up_day or follow_up_mode:
@@ -1008,7 +836,7 @@ def generate_pdf():
             elements.append(Paragraph('. '.join(follow_up_text) + '.', custom_styles['Normal']))
             elements.append(Spacer(1, 0.15*inch))
 
-        # Visit Type
+        # Visit Type - only if data exists
         if extracted_data.get('visit_type'):
             elements.append(Paragraph("CONSULTATION TYPE", custom_styles['Heading2']))
             elements.append(Paragraph(f"Visit Type: {extracted_data['visit_type']}", custom_styles['Normal']))
@@ -1017,19 +845,21 @@ def generate_pdf():
         # Footer
         elements.append(Spacer(1, 0.5*inch))
         footer_line = Table([[None]], colWidths=[6.5*inch], rowHeights=[1])
-        footer_line.setStyle(TableStyle([('LINEABOVE', (0, 0), (-1, -1), 1, colors.HexColor('#003087'))]))
+        footer_line.setStyle(TableStyle([('LINEABOVE', (0, 0), (-1, -1), 1, colors.HexColor('#0066CC'))]))
         elements.append(footer_line)
         elements.append(Spacer(1, 0.1*inch))
-        elements.append(Paragraph("This is a computer-generated medical report.", custom_styles['Footer']))
-        elements.append(Paragraph("Generated by UniDoc Medical Transcription System", custom_styles['Footer']))
+        elements.append(Paragraph("This is a computer-generated medical report based on extracted data.", custom_styles['Footer']))
+        elements.append(Paragraph("Generated by UniDoc AI Medical Transcription System", custom_styles['Footer']))
         elements.append(Paragraph(f"Report ID: {patient_info['consult_id']} | Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", custom_styles['Footer']))
 
         # Build PDF
         doc.build(elements)
         
+        print(f"✅ PDF generated successfully: {pdf_filename}")
         return jsonify({"status": "success", "pdf_path": pdf_filename}), 200
         
     except Exception as e:
+        print(f"❌ PDF generation error: {str(e)}")
         return jsonify({"error": f"PDF generation error: {str(e)}"}), 500
 
 @app.route('/<path:filename>', methods=['GET'])
